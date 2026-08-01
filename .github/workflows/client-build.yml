@@ -116,6 +116,7 @@ jobs:
         working-directory: client
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_OPTIONS: --max-old-space-size=8192
           XDT_CDN_BASE_URL: https://hotfix.cindy.app/cindy
         run: pnpm release:package -- --platform win32 --arch x64 --region dev --version $env:CINDY_CLIENT_VERSION --no-sign --skip-smoke
       - uses: actions/upload-artifact@v4
@@ -156,6 +157,7 @@ jobs:
         working-directory: client
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_OPTIONS: --max-old-space-size=8192
           XDT_CDN_BASE_URL: https://hotfix.cindy.app/cindy
         run: |
           set -o pipefail
