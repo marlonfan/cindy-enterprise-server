@@ -24,8 +24,8 @@ export function loadClientBuildConfig(file = configPath) {
       throw new Error(`${configPath}: ${key} must be a non-empty string`);
     }
   }
-  if (!/^[0-9a-f]{40}$/.test(config.ref)) {
-    throw new Error(`${configPath}: ref must be a pinned 40-character Git commit SHA`);
+  if (config.ref !== 'main' && !/^[0-9a-f]{40}$/.test(config.ref)) {
+    throw new Error(`${configPath}: ref must be main or a pinned 40-character Git commit SHA`);
   }
   const baseUrl = new URL(config.publicBaseUrl);
   if (baseUrl.protocol !== 'https:' || baseUrl.username || baseUrl.password || baseUrl.search || baseUrl.hash) {

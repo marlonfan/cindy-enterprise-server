@@ -88,7 +88,7 @@ function main() {
   if (!fs.existsSync(packageJsonPath)) throw new Error(`Cindy checkout not found: ${clientDir}`);
 
   const actualRef = execFileSync('git', ['-C', clientDir, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
-  if (!args.dryRun && actualRef !== config.ref) {
+  if (!args.dryRun && config.ref !== 'main' && actualRef !== config.ref) {
     throw new Error(`client checkout mismatch: expected ${config.ref}, got ${actualRef}`);
   }
 
@@ -123,7 +123,7 @@ function main() {
 
   if (args.dryRun) {
     console.log(`validated client build injection for ${clientDir}`);
-    console.log(`source ref: ${actualRef}${actualRef === config.ref ? '' : ' (dry-run mismatch allowed)'}`);
+    console.log(`source ref: ${actualRef} (configured: ${config.ref})`);
     console.log(`endpoint: ${config.publicBaseUrl}`);
     console.log(`version: ${version} (${androidVersionCode})`);
     return;
@@ -140,7 +140,7 @@ function main() {
     regionBuildConfig(config),
   );
 
-  console.log(`prepared ${config.repository}@${config.ref}`);
+  console.log(`prepared ${config.repository}@${actualRef} (configured: ${config.ref})`);
   console.log(`endpoint: ${config.publicBaseUrl}`);
   console.log(`desktop identity: ${config.buildRegion}`);
   console.log(`Android package: ${config.androidPackage}`);

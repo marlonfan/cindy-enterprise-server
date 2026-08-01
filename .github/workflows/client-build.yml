@@ -1,6 +1,14 @@
 name: Build enterprise clients
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/client-build.yml
+      - configs/client-build.json
+      - scripts/client-build-config.mjs
+      - scripts/prepare-client-build.mjs
   workflow_dispatch:
     inputs:
       version:
@@ -11,6 +19,21 @@ on:
         description: Monotonically increasing Android versionCode
         required: true
         default: '1'
+      build_android:
+        description: Build Android APK
+        required: true
+        type: boolean
+        default: true
+      build_windows:
+        description: Build Windows x64 installer
+        required: true
+        type: boolean
+        default: true
+      build_macos:
+        description: Build macOS x64 and arm64 DMGs
+        required: true
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -20,13 +43,18 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  CINDY_CLIENT_VERSION: ${{ inputs.version }}
-  CINDY_ANDROID_VERSION_CODE: ${{ inputs.android_version_code }}
+  CINDY_CLIENT_VERSION: ${{ inputs.version || '0.1.0' }}
+  CINDY_ANDROID_VERSION_CODE: ${{ inputs.android_version_code || '1' }}
   XDT_SKIP_AGENT_BIN_INSTALL: '1'
 
 jobs:
-  windows:
-    runs-on: windows-latest
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      repository: ${{ steps.config.outputs.repository }}
+      client_sha: ${{ steps.source.outputs.client_sha }}
+      version: ${{ steps.config.outputs.version }}
+      android_version_code: ${{ steps.config.outputs.android_version_code }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -34,10 +62,41 @@ jobs:
       - id: config
         shell: bash
         run: node enterprise/scripts/client-build-config.mjs >> "$GITHUB_OUTPUT"
+      - id: source
+        name: Resolve official Cindy source
+        shell: bash
+        env:
+          SOURCE_REPOSITORY: ${{ steps.config.outputs.repository }}
+          SOURCE_REF: ${{ steps.config.outputs.ref }}
+        run: |
+          set -euo pipefail
+          if [[ "$SOURCE_REF" =~ ^[0-9a-f]{40}$ ]]; then
+            client_sha="$SOURCE_REF"
+          else
+            client_sha="$(git ls-remote "https://github.com/${SOURCE_REPOSITORY}.git" "refs/heads/${SOURCE_REF}" | awk 'NR == 1 { print $1 }')"
+          fi
+          [[ "$client_sha" =~ ^[0-9a-f]{40}$ ]] || { echo "Could not resolve ${SOURCE_REPOSITORY}@${SOURCE_REF}" >&2; exit 1; }
+          echo "client_sha=$client_sha" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Enterprise client source"
+            echo
+            echo "- Repository: \`${SOURCE_REPOSITORY}\`"
+            echo "- Configured ref: \`${SOURCE_REF}\`"
+            echo "- Resolved SHA: \`${client_sha}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  windows:
+    needs: resolve
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_windows }}
+    runs-on: windows-latest
+    steps:
       - uses: actions/checkout@v4
         with:
-          repository: ${{ steps.config.outputs.repository }}
-          ref: ${{ steps.config.outputs.ref }}
+          path: enterprise
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ needs.resolve.outputs.repository }}
+          ref: ${{ needs.resolve.outputs.client_sha }}
           path: client
           submodules: recursive
           lfs: true
@@ -54,26 +113,28 @@ jobs:
       - run: pnpm --dir client install --frozen-lockfile
       - name: Package Windows x64
         working-directory: client
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          XDT_CDN_BASE_URL: https://hotfix.cindy.app/cindy
         run: pnpm release:package -- --platform win32 --arch x64 --region dev --version $env:CINDY_CLIENT_VERSION --no-sign --skip-smoke
       - uses: actions/upload-artifact@v4
         with:
-          name: cindy-enterprise-windows-${{ inputs.version }}
-          path: client/apps/desktop/release/artifacts/dev/${{ inputs.version }}/win32-x64/
+          name: cindy-enterprise-windows-${{ needs.resolve.outputs.version }}
+          path: client/apps/desktop/release/artifacts/dev/${{ needs.resolve.outputs.version }}/win32-x64/
           if-no-files-found: error
 
   macos:
+    needs: resolve
+    if: ${{ github.event_name == 'push' || inputs.build_macos }}
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
         with:
           path: enterprise
-      - id: config
-        shell: bash
-        run: node enterprise/scripts/client-build-config.mjs >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
         with:
-          repository: ${{ steps.config.outputs.repository }}
-          ref: ${{ steps.config.outputs.ref }}
+          repository: ${{ needs.resolve.outputs.repository }}
+          ref: ${{ needs.resolve.outputs.client_sha }}
           path: client
           submodules: recursive
           lfs: true
@@ -87,16 +148,47 @@ jobs:
           cache-dependency-path: client/pnpm-lock.yaml
       - run: node enterprise/scripts/prepare-client-build.mjs --client-dir client
       - run: pnpm --dir client install --frozen-lockfile
-      - name: Package macOS x64 and arm64
+      - id: package
+        name: Package macOS x64 and arm64
+        shell: bash
         working-directory: client
-        run: pnpm release:package -- --platform darwin --region dev --version "$CINDY_CLIENT_VERSION" --no-sign --skip-smoke
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          XDT_CDN_BASE_URL: https://hotfix.cindy.app/cindy
+        run: |
+          set -o pipefail
+          mkdir -p "$RUNNER_TEMP/cindy-diagnostics"
+          pnpm release:package -- --platform darwin --region dev --version "$CINDY_CLIENT_VERSION" --no-sign --skip-smoke 2>&1 | tee "$RUNNER_TEMP/cindy-diagnostics/macos-package.log"
+      - name: Summarize macOS packaging failure
+        if: ${{ failure() && steps.package.outcome == 'failure' }}
+        shell: bash
+        run: |
+          {
+            echo "## macOS packaging failure"
+            echo
+            echo '<details><summary>Last 200 log lines</summary>'
+            echo
+            echo '```text'
+            tail -n 200 "$RUNNER_TEMP/cindy-diagnostics/macos-package.log"
+            echo '```'
+            echo '</details>'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload macOS diagnostics
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: cindy-enterprise-macos-diagnostics-${{ needs.resolve.outputs.version }}
+          path: ${{ runner.temp }}/cindy-diagnostics/
+          if-no-files-found: warn
       - uses: actions/upload-artifact@v4
         with:
-          name: cindy-enterprise-macos-${{ inputs.version }}
-          path: client/apps/desktop/release/artifacts/dev/${{ inputs.version }}/darwin-*/
+          name: cindy-enterprise-macos-${{ needs.resolve.outputs.version }}
+          path: client/apps/desktop/release/artifacts/dev/${{ needs.resolve.outputs.version }}/darwin-*/
           if-no-files-found: error
 
   android:
+    needs: resolve
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_android }}
     runs-on: ubuntu-latest
     env:
       NODE_ENV: production
@@ -110,13 +202,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           path: enterprise
-      - id: config
-        shell: bash
-        run: node enterprise/scripts/client-build-config.mjs >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
         with:
-          repository: ${{ steps.config.outputs.repository }}
-          ref: ${{ steps.config.outputs.ref }}
+          repository: ${{ needs.resolve.outputs.repository }}
+          ref: ${{ needs.resolve.outputs.client_sha }}
           path: client
           submodules: recursive
           lfs: true
@@ -168,6 +257,6 @@ jobs:
           sha256sum "artifacts/android/cindy-enterprise-${CINDY_CLIENT_VERSION}.apk" > "artifacts/android/cindy-enterprise-${CINDY_CLIENT_VERSION}.apk.sha256"
       - uses: actions/upload-artifact@v4
         with:
-          name: cindy-enterprise-android-${{ inputs.version }}
+          name: cindy-enterprise-android-${{ needs.resolve.outputs.version }}
           path: artifacts/android/
           if-no-files-found: error

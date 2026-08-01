@@ -1,6 +1,6 @@
 {
-  "repository": "marlonfan/cindy",
-  "ref": "284e379b781af188da7dfc64a9e6f2cd7ede0049",
+  "repository": "makecindy/cindy",
+  "ref": "main",
   "publicBaseUrl": "https://cindy.marlon.life",
   "buildRegion": "dev",
   "authRealmRegion": "cn",

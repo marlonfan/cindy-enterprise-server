@@ -128,9 +128,10 @@ Android Debug 清单默认允许局域网 HTTP；iOS 真机仍受 ATS 约束，�
 
 ## Android、Windows 与 macOS 客户端
 
-`.github/workflows/client-build.yml` 是手动触发的企业客户端构建。它不会在客户端 fork
-长期提交端点改动，而是每次固定检出 `configs/client-build.json` 中记录的
-`marlonfan/cindy` commit，在 Actions 临时工作区内完成以下注入：
+`.github/workflows/client-build.yml` 是企业客户端构建。它不再依赖客户端 fork，也不会在
+客户端仓长期提交端点改动。Workflow 启动时只解析一次 `makecindy/cindy` 的最新 `main`
+提交，Android、Windows 和 macOS 在同一批构建中固定检出该 SHA，并把实际 SHA 写入
+GitHub Actions Summary，随后只在 Actions 临时工作区内完成以下注入：
 
 - 三份客户端自举清单统一指向 `https://cindy.marlon.life`；
 - Desktop 离线端点缓存的安全锚点收紧到 `cindy.marlon.life`；
@@ -138,9 +139,14 @@ Android Debug 清单默认允许局域网 HTTP；iOS 真机仍受 ATS 约束，�
 - Android 包名使用 `life.marlon.cindy`，且不配置 TapDB 或 Google 登录；
 - 保留企业本地验证码登录入口，服务端是否启用仍由 `DEV_LOGIN_CODE` 决定。
 
-升级 Cindy 客户端时，先在测试环境验证新的 fork commit，再只修改
-`configs/client-build.json` 的 `ref`。使用 commit SHA 而不是浮动 `main`，保证每个安装包
-都可复现和审计。
+每次运行会跟随官方最新 `main`，但单次运行内不会因上游更新而让三端使用不同源码。需要
+复现某次构建时，使用 Actions Summary 记录的 SHA；需要长期冻结版本时，可把
+`configs/client-build.json` 的 `ref` 临时改成该 40 位 SHA。
+
+桌面打包阶段需要从 GitHub 下载官方 ripgrep 运行资产。Workflow 仅在该构建步骤注入
+GitHub 自动令牌，避免共享 Runner 的匿名 API 限流；同时把 `XDT_CDN_BASE_URL` 指向 Cindy
+官方 hotfix CDN，在对应版本资产存在时作为下载兜底。这些构建机环境变量不会改写企业
+客户端的端点清单，安装后的业务请求仍统一访问 `https://cindy.marlon.life`。
 
 ### Android 签名
 
@@ -172,7 +178,8 @@ keystore、密码和 Base64 文件都不得提交 Git。丢失 keystore 后无�
 ### 构建产物与签名状态
 
 在 GitHub Actions 手动运行 `Build enterprise clients`，填写 `version` 和单调递增的
-`android_version_code`。完成后可下载：
+`android_version_code`，并选择需要构建的平台。修改构建 Workflow、配置或注入脚本并推送
+到 `main` 时会自动只构建 macOS，方便先验证桌面打包链路。完成后可下载：
 
 - Android：使用上述企业 keystore 签名的 APK；
 - Windows：x64 `Setup.exe`，当前未做 Authenticode 签名；
