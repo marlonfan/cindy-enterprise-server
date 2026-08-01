@@ -97,6 +97,7 @@ jobs:
         with:
           repository: ${{ needs.resolve.outputs.repository }}
           ref: ${{ needs.resolve.outputs.client_sha }}
+          fetch-depth: 0
           path: client
           submodules: recursive
           lfs: true
@@ -135,6 +136,7 @@ jobs:
         with:
           repository: ${{ needs.resolve.outputs.repository }}
           ref: ${{ needs.resolve.outputs.client_sha }}
+          fetch-depth: 0
           path: client
           submodules: recursive
           lfs: true
