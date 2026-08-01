@@ -249,7 +249,7 @@ jobs:
           printf '%s' "$KEYSTORE_BASE64" | base64 --decode > client/apps/mobile/android/app/enterprise-release.jks
           chmod 600 client/apps/mobile/android/app/enterprise-release.jks
           echo "CINDY_ANDROID_KEYSTORE_PATH=$GITHUB_WORKSPACE/client/apps/mobile/android/app/enterprise-release.jks" >> "$GITHUB_ENV"
-      - run: node enterprise/scripts/patch-android-signing.mjs client/apps/mobile/android/app/build.gradle
+      - run: node enterprise/scripts/patch-android-signing.mjs client/apps/mobile/android/app/build.gradle client/apps/mobile/android/gradle.properties
       - name: Build signed Android APK
         working-directory: client/apps/mobile/android
         run: ./gradlew assembleRelease --no-daemon

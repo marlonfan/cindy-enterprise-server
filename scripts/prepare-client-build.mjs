@@ -86,6 +86,12 @@ function main() {
   const clientDir = path.resolve(args.clientDir);
   const packageJsonPath = path.join(clientDir, 'package.json');
   if (!fs.existsSync(packageJsonPath)) throw new Error(`Cindy checkout not found: ${clientDir}`);
+  const desktopPackageJsonPath = path.join(clientDir, 'apps', 'desktop', 'package.json');
+  const desktopPackageJson = JSON.parse(fs.readFileSync(desktopPackageJsonPath, 'utf8'));
+  desktopPackageJson.repository = {
+    type: 'git',
+    url: `git+https://github.com/${config.repository}.git`,
+  };
 
   const actualRef = execFileSync('git', ['-C', clientDir, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
   if (!args.dryRun && config.ref !== 'main' && actualRef !== config.ref) {
@@ -134,6 +140,7 @@ function main() {
     writeJson(path.join(clientDir, 'config', name), manifest);
   }
   fs.writeFileSync(cachePath, patchedCache, 'utf8');
+  writeJson(desktopPackageJsonPath, desktopPackageJson);
   writeJson(appJsonPath, appJson);
   writeJson(
     path.join(clientDir, 'apps', 'mobile', 'scripts', 'self-host-regions.json'),
@@ -143,6 +150,7 @@ function main() {
   console.log(`prepared ${config.repository}@${actualRef} (configured: ${config.ref})`);
   console.log(`endpoint: ${config.publicBaseUrl}`);
   console.log(`desktop identity: ${config.buildRegion}`);
+  console.log(`desktop repository: ${desktopPackageJson.repository.url}`);
   console.log(`Android package: ${config.androidPackage}`);
   console.log(`version: ${version} (${androidVersionCode})`);
 }
