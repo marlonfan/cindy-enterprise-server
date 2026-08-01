@@ -1,0 +1,16 @@
+.git
+.env
+data
+bin
+*.test
+*.exe
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.base64
+*.secret
+.github
+scripts
+compose*.yaml
+*.md

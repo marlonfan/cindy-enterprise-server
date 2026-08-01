@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "authApiBaseUrl": "https://cindy.marlon.life",
+  "authDesktopCallbackUrl": "https://cindy.marlon.life/api/auth/desktop/callback",
+  "deviceLinkApiBaseUrl": "https://cindy.marlon.life",
+  "oauthBrokerApiBaseUrl": "",
+  "ossApiBaseUrl": "https://cindy.marlon.life",
+  "heartbeatUrl": "https://cindy.marlon.life",
+  "telegramHookWsUrl": "",
+  "xHookWsUrl": "",
+  "slackHookWsUrl": "",
+  "websiteUrl": "https://cindy.marlon.life",
+  "modelAccessApiBaseUrl": "https://cindy.marlon.life",
+  "voiceApiBaseUrl": "",
+  "githubApiBaseUrl": "",
+  "skillhubApiBaseUrl": "",
+  "pluginApiBaseUrl": "",
+  "cdnBaseUrl": "https://cindy.marlon.life",
+  "mobileUpdateBaseUrl": "",
+  "review": ""
+}

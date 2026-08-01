@@ -1,0 +1,11 @@
+{
+  "repository": "marlonfan/cindy",
+  "ref": "284e379b781af188da7dfc64a9e6f2cd7ede0049",
+  "publicBaseUrl": "https://cindy.marlon.life",
+  "buildRegion": "dev",
+  "authRealmRegion": "cn",
+  "version": "0.1.0",
+  "androidVersionCode": 1,
+  "androidPackage": "life.marlon.cindy",
+  "iosBundleId": "life.marlon.cindy"
+}

@@ -1,0 +1,173 @@
+name: Build enterprise clients
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Client version in x.y.z format
+        required: true
+        default: 0.1.0
+      android_version_code:
+        description: Monotonically increasing Android versionCode
+        required: true
+        default: '1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: enterprise-client-build
+  cancel-in-progress: false
+
+env:
+  CINDY_CLIENT_VERSION: ${{ inputs.version }}
+  CINDY_ANDROID_VERSION_CODE: ${{ inputs.android_version_code }}
+  XDT_SKIP_AGENT_BIN_INSTALL: '1'
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: enterprise
+      - id: config
+        shell: bash
+        run: node enterprise/scripts/client-build-config.mjs >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.config.outputs.repository }}
+          ref: ${{ steps.config.outputs.ref }}
+          path: client
+          submodules: recursive
+          lfs: true
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: client/pnpm-lock.yaml
+      - uses: dtolnay/rust-toolchain@stable
+      - run: node enterprise/scripts/prepare-client-build.mjs --client-dir client
+      - run: pnpm --dir client install --frozen-lockfile
+      - name: Package Windows x64
+        working-directory: client
+        run: pnpm release:package -- --platform win32 --arch x64 --region dev --version $env:CINDY_CLIENT_VERSION --no-sign --skip-smoke
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cindy-enterprise-windows-${{ inputs.version }}
+          path: client/apps/desktop/release/artifacts/dev/${{ inputs.version }}/win32-x64/
+          if-no-files-found: error
+
+  macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: enterprise
+      - id: config
+        shell: bash
+        run: node enterprise/scripts/client-build-config.mjs >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.config.outputs.repository }}
+          ref: ${{ steps.config.outputs.ref }}
+          path: client
+          submodules: recursive
+          lfs: true
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: client/pnpm-lock.yaml
+      - run: node enterprise/scripts/prepare-client-build.mjs --client-dir client
+      - run: pnpm --dir client install --frozen-lockfile
+      - name: Package macOS x64 and arm64
+        working-directory: client
+        run: pnpm release:package -- --platform darwin --region dev --version "$CINDY_CLIENT_VERSION" --no-sign --skip-smoke
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cindy-enterprise-macos-${{ inputs.version }}
+          path: client/apps/desktop/release/artifacts/dev/${{ inputs.version }}/darwin-*/
+          if-no-files-found: error
+
+  android:
+    runs-on: ubuntu-latest
+    env:
+      NODE_ENV: production
+      EXPO_PUBLIC_CINDY_AUTH_REGION: dev
+      EXPO_PUBLIC_XDT_DEV_LOGIN_ENABLED: '1'
+      CINDY_USE_LOCAL_REGION_CONFIG: '1'
+      CINDY_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      CINDY_ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      CINDY_ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: enterprise
+      - id: config
+        shell: bash
+        run: node enterprise/scripts/client-build-config.mjs >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.config.outputs.repository }}
+          ref: ${{ steps.config.outputs.ref }}
+          path: client
+          submodules: recursive
+          lfs: true
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: client/pnpm-lock.yaml
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+      - uses: android-actions/setup-android@v3
+      - run: node enterprise/scripts/prepare-client-build.mjs --client-dir client
+      - run: pnpm --dir client install --frozen-lockfile
+      - name: Check Android signing secrets
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          test -n "$KEYSTORE_BASE64" || { echo 'Missing ANDROID_KEYSTORE_BASE64 secret'; exit 1; }
+          test -n "$CINDY_ANDROID_KEYSTORE_PASSWORD" || { echo 'Missing ANDROID_KEYSTORE_PASSWORD secret'; exit 1; }
+          test -n "$CINDY_ANDROID_KEY_ALIAS" || { echo 'Missing ANDROID_KEY_ALIAS secret'; exit 1; }
+          test -n "$CINDY_ANDROID_KEY_PASSWORD" || { echo 'Missing ANDROID_KEY_PASSWORD secret'; exit 1; }
+      - name: Generate Android project
+        working-directory: client/apps/mobile
+        run: pnpm exec expo prebuild --platform android --clean --no-install
+      - name: Install Android signing key
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > client/apps/mobile/android/app/enterprise-release.jks
+          chmod 600 client/apps/mobile/android/app/enterprise-release.jks
+          echo "CINDY_ANDROID_KEYSTORE_PATH=$GITHUB_WORKSPACE/client/apps/mobile/android/app/enterprise-release.jks" >> "$GITHUB_ENV"
+      - run: node enterprise/scripts/patch-android-signing.mjs client/apps/mobile/android/app/build.gradle
+      - name: Build signed Android APK
+        working-directory: client/apps/mobile/android
+        run: ./gradlew assembleRelease --no-daemon
+      - name: Collect Android artifact
+        shell: bash
+        run: |
+          mkdir -p artifacts/android
+          cp client/apps/mobile/android/app/build/outputs/apk/release/app-release.apk "artifacts/android/cindy-enterprise-${CINDY_CLIENT_VERSION}.apk"
+          sha256sum "artifacts/android/cindy-enterprise-${CINDY_CLIENT_VERSION}.apk" > "artifacts/android/cindy-enterprise-${CINDY_CLIENT_VERSION}.apk.sha256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cindy-enterprise-android-${{ inputs.version }}
+          path: artifacts/android/
+          if-no-files-found: error

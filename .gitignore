@@ -1,0 +1,16 @@
+.env
+data/
+bin/
+*.exe
+*.test
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.jks.base64
+*.keystore.base64
+*.p12.base64
+*.pfx.base64
+*.secret
+configs/model-list.json
+configs/model-catalog.json

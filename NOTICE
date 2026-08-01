@@ -1,0 +1,9 @@
+Cindy Enterprise Server
+This repository contains an independent server implementation for clients using
+the Cindy protocols.
+
+The optional client build workflow produces artifacts from the Cindy client
+source at https://github.com/makecindy/cindy, mirrored by the configured fork.
+The Cindy client is licensed under the Apache License, Version 2.0. Its source
+revision is pinned in configs/client-build.json and its own notices are retained
+inside the client build output.

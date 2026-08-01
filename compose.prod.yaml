@@ -1,0 +1,18 @@
+services:
+  cindy-enterprise-server:
+    image: ghcr.io/marlonfan/cindy-enterprise-server:${CINDY_SERVER_TAG:-latest}
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - cindy-data:/var/lib/cindy
+      - ./configs:/etc/cindy:ro
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/cindy-enterprise-server", "--healthcheck"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  cindy-data:
