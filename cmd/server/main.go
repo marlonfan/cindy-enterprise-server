@@ -13,6 +13,7 @@ import (
 	"github.com/marlonfan/cindy-enterprise-server/internal/auth"
 	"github.com/marlonfan/cindy-enterprise-server/internal/config"
 	"github.com/marlonfan/cindy-enterprise-server/internal/devicelink"
+	"github.com/marlonfan/cindy-enterprise-server/internal/mail"
 	"github.com/marlonfan/cindy-enterprise-server/internal/media"
 	"github.com/marlonfan/cindy-enterprise-server/internal/model"
 	"github.com/marlonfan/cindy-enterprise-server/internal/store"
@@ -40,7 +41,19 @@ func main() {
 		logger.Error("open state store failed", "error", err)
 		os.Exit(1)
 	}
-	authService, err := auth.New(context.Background(), cfg, dataStore, logger)
+	var verificationSender mail.VerificationSender
+	if cfg.SMTPHost != "" {
+		verificationSender, err = mail.NewSMTPSender(mail.SMTPConfig{
+			Host: cfg.SMTPHost, Port: cfg.SMTPPort, Username: cfg.SMTPUsername, Password: cfg.SMTPPassword,
+			FromAddress: cfg.SMTPFromAddress, FromName: cfg.SMTPFromName, TLSMode: cfg.SMTPTLSMode,
+			ServerName: cfg.SMTPServerName, Timeout: cfg.SMTPTimeout,
+		})
+		if err != nil {
+			logger.Error("initialize SMTP sender failed", "error", err)
+			os.Exit(1)
+		}
+	}
+	authService, err := auth.New(context.Background(), cfg, dataStore, logger, verificationSender)
 	if err != nil {
 		logger.Error("initialize auth failed", "error", err)
 		os.Exit(1)

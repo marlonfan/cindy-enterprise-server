@@ -18,6 +18,7 @@ import (
 	"golang.org/x/oauth2"
 
 	"github.com/marlonfan/cindy-enterprise-server/internal/config"
+	"github.com/marlonfan/cindy-enterprise-server/internal/mail"
 	"github.com/marlonfan/cindy-enterprise-server/internal/store"
 	"github.com/marlonfan/cindy-enterprise-server/internal/web"
 )
@@ -60,24 +61,29 @@ type hostedResult struct {
 }
 
 type Service struct {
-	cfg         config.Config
-	store       *store.Store
-	logger      *slog.Logger
-	signer      *TokenSigner
-	oidc        *oidc.Provider
-	verifier    *oidc.IDTokenVerifier
-	oauth       *oauth2.Config
-	mu          sync.Mutex
-	requests    map[string]authRequest
-	codes       map[string]authorizationCode
-	hostedCodes map[string]hostedResult
+	cfg             config.Config
+	store           *store.Store
+	logger          *slog.Logger
+	signer          *TokenSigner
+	oidc            *oidc.Provider
+	verifier        *oidc.IDTokenVerifier
+	oauth           *oauth2.Config
+	mu              sync.Mutex
+	requests        map[string]authRequest
+	codes           map[string]authorizationCode
+	hostedCodes     map[string]hostedResult
+	emailSender     mail.VerificationSender
+	emailChallenges map[string]emailChallenge
+	emailSends      map[string]emailSendState
+	now             func() time.Time
 }
 
-func New(ctx context.Context, cfg config.Config, dataStore *store.Store, logger *slog.Logger) (*Service, error) {
+func New(ctx context.Context, cfg config.Config, dataStore *store.Store, logger *slog.Logger, emailSender mail.VerificationSender) (*Service, error) {
 	service := &Service{
 		cfg: cfg, store: dataStore, logger: logger,
 		signer:   NewTokenSigner(cfg.JWTIssuer, cfg.OIDCOrgID, cfg.JWTSecret, cfg.AccessTokenTTL),
 		requests: map[string]authRequest{}, codes: map[string]authorizationCode{}, hostedCodes: map[string]hostedResult{},
+		emailSender: emailSender, emailChallenges: map[string]emailChallenge{}, emailSends: map[string]emailSendState{}, now: time.Now,
 	}
 	if cfg.OIDCIssuerURL != "" {
 		provider, err := oidc.NewProvider(ctx, cfg.OIDCIssuerURL)
@@ -103,8 +109,8 @@ func (s *Service) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/auth/oidc/callback", s.oidcCallback)
 	mux.HandleFunc("POST /api/auth/desktop/callback/poll", s.pollDesktopCallback)
 	mux.HandleFunc("POST /api/auth/token", s.exchangeCode)
-	mux.HandleFunc("POST /api/auth/email/request-code", s.requestDevCode)
-	mux.HandleFunc("POST /api/auth/email/verify-code", s.verifyDevCode)
+	mux.HandleFunc("POST /api/auth/email/request-code", s.requestEmailCode)
+	mux.HandleFunc("POST /api/auth/email/verify-code", s.verifyEmailCode)
 	mux.HandleFunc("POST /api/auth/refresh", s.refresh)
 	mux.Handle("GET /api/me", s.Require(http.HandlerFunc(s.me)))
 	mux.Handle("PATCH /api/me/profile", s.Require(http.HandlerFunc(s.patchProfile)))
@@ -136,7 +142,7 @@ func ClaimsFromContext(ctx context.Context) (Claims, bool) {
 
 func (s *Service) providers(w http.ResponseWriter, _ *http.Request) {
 	web.JSON(w, http.StatusOK, map[string]any{
-		"region": s.cfg.Region, "attribution": "email", "email": s.cfg.DevLoginCode != "", "phone": false, "social": []string{},
+		"region": s.cfg.Region, "attribution": "email", "email": s.emailLoginEnabled(), "phone": false, "social": []string{},
 	})
 }
 
@@ -152,7 +158,7 @@ func (s *Service) discovery(w http.ResponseWriter, r *http.Request) {
 	if s.oidc != nil && s.emailAllowed(body.Email) {
 		methods = append(methods, s.ssoMethod(true))
 	}
-	if s.cfg.DevLoginCode != "" {
+	if s.emailLoginEnabled() {
 		methods = append(methods, map[string]any{"type": "email_code"})
 	}
 	web.JSON(w, http.StatusOK, map[string]any{"methods": methods})
@@ -373,38 +379,6 @@ func (s *Service) exchangeCode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.issueTokenPair(w, code.UserID, code.DeviceID)
-}
-
-func (s *Service) requestDevCode(w http.ResponseWriter, r *http.Request) {
-	if s.cfg.DevLoginCode == "" {
-		web.Error(w, http.StatusNotFound, "EMAIL_LOGIN_DISABLED", "email login is disabled")
-		return
-	}
-	web.JSON(w, http.StatusOK, map[string]string{"status": "sent"})
-}
-
-func (s *Service) verifyDevCode(w http.ResponseWriter, r *http.Request) {
-	if s.cfg.DevLoginCode == "" {
-		web.Error(w, http.StatusNotFound, "EMAIL_LOGIN_DISABLED", "email login is disabled")
-		return
-	}
-	var body struct {
-		Email      string `json:"email"`
-		Code       string `json:"code"`
-		DeviceID   string `json:"deviceId"`
-		ClientType string `json:"clientType"`
-		Locale     string `json:"locale"`
-	}
-	if web.DecodeJSON(r, &body, 8<<10) != nil || body.Code != s.cfg.DevLoginCode || !s.emailAllowed(body.Email) || body.DeviceID == "" {
-		web.Error(w, http.StatusUnauthorized, "INVALID_CODE", "verification code is invalid")
-		return
-	}
-	user, err := s.store.FindOrCreateUser("dev|"+strings.ToLower(body.Email), strings.ToLower(body.Email), body.Email)
-	if err != nil {
-		web.Error(w, http.StatusInternalServerError, "INTERNAL", "failed to persist user")
-		return
-	}
-	s.issueTokenPair(w, user.ID, body.DeviceID)
 }
 
 func (s *Service) refresh(w http.ResponseWriter, r *http.Request) {

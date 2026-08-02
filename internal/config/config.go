@@ -28,6 +28,19 @@ type Config struct {
 	OIDCOrgDomain           string
 	OIDCConnectionName      string
 	DevLoginCode            string
+	SMTPHost                string
+	SMTPPort                int
+	SMTPUsername            string
+	SMTPPassword            string
+	SMTPFromAddress         string
+	SMTPFromName            string
+	SMTPTLSMode             string
+	SMTPServerName          string
+	SMTPTimeout             time.Duration
+	EmailCodeTTL            time.Duration
+	EmailCodeResendInterval time.Duration
+	EmailCodeMaxAttempts    int
+	EmailCodeHourlyLimit    int
 	ModelGatewayEndpoint    string
 	ModelGatewayClientKey   string
 	ModelGatewayUpstream    string
@@ -63,6 +76,19 @@ func Load() (Config, error) {
 		OIDCOrgDomain:           strings.ToLower(strings.TrimSpace(os.Getenv("OIDC_ORG_DOMAIN"))),
 		OIDCConnectionName:      env("OIDC_CONNECTION_NAME", "Enterprise SSO"),
 		DevLoginCode:            os.Getenv("DEV_LOGIN_CODE"),
+		SMTPHost:                strings.TrimSpace(os.Getenv("SMTP_HOST")),
+		SMTPPort:                intEnv("SMTP_PORT", 587),
+		SMTPUsername:            strings.TrimSpace(os.Getenv("SMTP_USERNAME")),
+		SMTPPassword:            os.Getenv("SMTP_PASSWORD"),
+		SMTPFromAddress:         strings.TrimSpace(os.Getenv("SMTP_FROM_ADDRESS")),
+		SMTPFromName:            env("SMTP_FROM_NAME", "Cindy Enterprise"),
+		SMTPTLSMode:             strings.ToLower(env("SMTP_TLS_MODE", "auto")),
+		SMTPServerName:          strings.TrimSpace(os.Getenv("SMTP_SERVER_NAME")),
+		SMTPTimeout:             durationEnv("SMTP_TIMEOUT", 15*time.Second),
+		EmailCodeTTL:            durationEnv("EMAIL_CODE_TTL", 10*time.Minute),
+		EmailCodeResendInterval: durationEnv("EMAIL_CODE_RESEND_INTERVAL", 42*time.Second),
+		EmailCodeMaxAttempts:    intEnv("EMAIL_CODE_MAX_ATTEMPTS", 5),
+		EmailCodeHourlyLimit:    intEnv("EMAIL_CODE_MAX_SENDS_PER_HOUR", 6),
 		ModelGatewayEndpoint:    trimRightSlash(os.Getenv("MODEL_GATEWAY_ENDPOINT")),
 		ModelGatewayClientKey:   os.Getenv("MODEL_GATEWAY_CLIENT_KEY"),
 		ModelGatewayUpstream:    trimRightSlash(os.Getenv("MODEL_GATEWAY_UPSTREAM")),
@@ -92,6 +118,42 @@ func Load() (Config, error) {
 		if cfg.OIDCRedirectURL == "" {
 			cfg.OIDCRedirectURL = cfg.PublicBaseURL + "/api/auth/oidc/callback"
 		}
+	}
+	if cfg.SMTPHost == "" {
+		if cfg.SMTPUsername != "" || cfg.SMTPPassword != "" || cfg.SMTPFromAddress != "" || cfg.SMTPServerName != "" {
+			return Config{}, errors.New("SMTP_HOST is required when SMTP settings are configured")
+		}
+	} else {
+		if cfg.SMTPFromAddress == "" {
+			cfg.SMTPFromAddress = cfg.SMTPUsername
+		}
+		if cfg.SMTPFromAddress == "" {
+			return Config{}, errors.New("SMTP_FROM_ADDRESS or SMTP_USERNAME is required when SMTP_HOST is set")
+		}
+		if (cfg.SMTPUsername == "") != (cfg.SMTPPassword == "") {
+			return Config{}, errors.New("SMTP_USERNAME and SMTP_PASSWORD must be configured together")
+		}
+		if cfg.SMTPPort < 1 || cfg.SMTPPort > 65535 {
+			return Config{}, errors.New("SMTP_PORT must be between 1 and 65535")
+		}
+		if cfg.SMTPTLSMode != "auto" && cfg.SMTPTLSMode != "tls" && cfg.SMTPTLSMode != "starttls" {
+			return Config{}, errors.New("SMTP_TLS_MODE must be auto, tls, or starttls")
+		}
+		if cfg.SMTPTimeout <= 0 {
+			return Config{}, errors.New("SMTP_TIMEOUT must be positive")
+		}
+	}
+	if cfg.EmailCodeTTL <= 0 || cfg.EmailCodeTTL > 24*time.Hour {
+		return Config{}, errors.New("EMAIL_CODE_TTL must be positive and no more than 24h")
+	}
+	if cfg.EmailCodeResendInterval <= 0 {
+		return Config{}, errors.New("EMAIL_CODE_RESEND_INTERVAL must be positive")
+	}
+	if cfg.EmailCodeMaxAttempts < 1 || cfg.EmailCodeMaxAttempts > 20 {
+		return Config{}, errors.New("EMAIL_CODE_MAX_ATTEMPTS must be between 1 and 20")
+	}
+	if cfg.EmailCodeHourlyLimit < 1 || cfg.EmailCodeHourlyLimit > 100 {
+		return Config{}, errors.New("EMAIL_CODE_MAX_SENDS_PER_HOUR must be between 1 and 100")
 	}
 	if cfg.ModelGatewayUpstream != "" {
 		if cfg.ModelGatewayClientKey == "" {
@@ -130,6 +192,18 @@ func boolEnv(key string, fallback bool) bool {
 		return fallback
 	}
 	parsed, err := strconv.ParseBool(value)
+	if err != nil {
+		return fallback
+	}
+	return parsed
+}
+
+func intEnv(key string, fallback int) int {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(value)
 	if err != nil {
 		return fallback
 	}

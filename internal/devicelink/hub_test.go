@@ -27,7 +27,7 @@ func TestRelayRoutesOnlyWithinAccountAndHonorsRemoteToggle(t *testing.T) {
 	authService, err := auth.New(context.Background(), config.Config{
 		Region: "global", JWTIssuer: "test", JWTSecret: "01234567890123456789012345678901",
 		AccessTokenTTL: time.Hour, RefreshTokenTTL: time.Hour, OIDCOrgID: "test", OIDCOrgName: "Test",
-	}, dataStore, logger)
+	}, dataStore, logger, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

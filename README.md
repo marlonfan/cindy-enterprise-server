@@ -8,6 +8,7 @@
 
 - 企业 OIDC 登录：OIDC discovery、浏览器授权、PKCE、托管 Desktop 回调轮询。
 - Cindy access/refresh token：短期 HS256 access token、一次性 refresh token rotation、设备绑定。
+- 邮箱验证码登录：SMTP TLS/STARTTLS、加密随机六位码、单次使用、有效期与重发/尝试次数限制。
 - Device Link v1：`hello`、presence、ping/pong、同账号路由、`remoteControlEnabled`、协议错误码、重复连接处理。
 - 设备管理：列表、在线状态、重命名、删除、移动推送 token 登记。
 - 跨设备附件：本服务提供短期 HMAC 签名 PUT/GET URL、Range 下载、账号隔离和删除。
@@ -63,8 +64,29 @@ docker compose -f compose.prod.yaml up -d
 WebSocket 一起反代到 Go 服务。如果 GHCR 包保持 private，生产机需先执行
 `docker login ghcr.io`。
 
-本地联调可以不配 OIDC。仅本机访问时设置 `DEV_LOGIN_CODE=123456` 和
-`PUBLIC_BASE_URL=http://localhost:8080`；要让同一局域网的手机访问，还需设置：
+生产环境建议配置 SMTP 邮箱验证码。验证码使用 `crypto/rand` 生成，服务端内存只保存
+与邮箱绑定的 HMAC 摘要，不记录明文；默认 10 分钟过期、最多尝试 5 次、42 秒内不可重发，
+每个邮箱每小时最多发送 6 次。465 端口使用隐式 TLS，其他端口在 `auto` 模式下使用
+STARTTLS：
+
+```dotenv
+SMTP_HOST=smtp.example.com
+SMTP_PORT=587
+SMTP_USERNAME=cindy@example.com
+SMTP_PASSWORD=<从部署 Secret 注入>
+SMTP_FROM_ADDRESS=cindy@example.com
+SMTP_FROM_NAME=Cindy Enterprise
+SMTP_TLS_MODE=auto
+```
+
+`SMTP_PASSWORD` 只能放在部署机的 Git 忽略 `.env` 或 Secret Manager，不能提交仓库。邮件模板
+同时提供 HTML 和纯文本版本，可用 `go run ./cmd/preview-verification-email -out <path>` 生成
+静态预览。验证码状态当前保存在服务进程内存中，服务重启后未使用的验证码会失效；多副本部署
+前需要把 challenge 和限流状态迁移到 Redis 等共享存储。
+
+本地联调可以不配 OIDC。仅本机访问时可使用开发兜底 `DEV_LOGIN_CODE=123456` 和
+`PUBLIC_BASE_URL=http://localhost:8080`；配置了 `SMTP_HOST` 后固定码自动失效。要让同一局域网
+的手机访问，还需设置：
 
 ```dotenv
 LISTEN_ADDR=0.0.0.0:8080
@@ -137,7 +159,7 @@ GitHub Actions Summary，随后只在 Actions 临时工作区内完成以下注�
 - Desktop 离线端点缓存的安全锚点收紧到 `cindy.marlon.life`；
 - 使用可与官方客户端并存的 `dev` 构建身份；
 - Android 包名使用 `life.marlon.cindy`，且不配置 TapDB 或 Google 登录；
-- 保留企业本地验证码登录入口，服务端是否启用仍由 `DEV_LOGIN_CODE` 决定。
+- 保留企业邮箱验证码登录入口，服务端配置 SMTP（或仅本地使用 `DEV_LOGIN_CODE` 兜底）后启用。
 
 每次运行会跟随官方最新 `main`，但单次运行内不会因上游更新而让三端使用不同源码。需要
 复现某次构建时，使用 Actions Summary 记录的 SHA；需要长期冻结版本时，可把

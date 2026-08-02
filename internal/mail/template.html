@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>{{.ProductName}} 登录验证码</title>
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="light dark">
+<meta name="supported-color-schemes" content="light dark">
+<meta name="x-apple-disable-message-reformatting">
+<style>
+
+  @media (prefers-color-scheme: dark) {
+    body { background-color: #101413 !important; }
+    .card { background-color: #171b1a !important; border-color: #2a302e !important; }
+    .brand-dot { background-color: #2dd4bf !important; }
+    .brand-name { color: #f3f4f6 !important; }
+    .title { color: #f9fafb !important; }
+    .subtitle, .detail, .note { color: #c3c9c6 !important; }
+    .code-box { background-color: #0f1f1c !important; border-color: #155e54 !important; }
+    .code { color: #5eead4 !important; }
+    .divider { border-top-color: #2a302e !important; }
+    .footer-note { color: #8b9490 !important; }
+  }
+
+  @media only screen and (max-width: 620px) {
+    .container { width: 100% !important; }
+    .card { padding: 32px 20px !important; }
+    .code { font-size: 34px !important; letter-spacing: 6px !important; }
+  }
+</style>
+</head><body style="margin:0; padding:0; background-color:#f4f6f5; -webkit-text-size-adjust:100%;">
+
+<span style="display:none !important; visibility:hidden; mso-hide:all; font-size:1px; line-height:1px; max-height:0; max-width:0; opacity:0; overflow:hidden;">{{.Preheader}}</span>
+
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f4f6f5">
+  <tr>
+    <td align="center" style="padding:32px 16px;">
+      <table role="presentation" class="container" width="600" cellpadding="0" cellspacing="0" border="0" style="width:100%; max-width:600px;">
+        <tr>
+          <td class="card" style="background-color:#ffffff; border:1px solid #e5e9e7; border-radius:16px; padding:40px 32px;">
+
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td style="padding-bottom:28px;">
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                    <tr>
+                      <td class="brand-dot" width="10" height="10" style="width:10px; height:10px; background-color:#14b8a6; border-radius:50%; font-size:0; line-height:0;">&nbsp;</td>
+                      <td class="brand-name" style="padding-left:9px; font-family:'Segoe UI',Arial,'Helvetica Neue',sans-serif; font-size:15px; font-weight:600; color:#1f2937;">{{.ProductName}}</td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td class="title" style="padding-bottom:10px; font-family:'Segoe UI',Arial,'Helvetica Neue',sans-serif; font-size:24px; font-weight:700; color:#111827;">登录验证码</td>
+              </tr>
+              <tr>
+                <td class="subtitle" style="padding-bottom:28px; font-family:'Segoe UI',Arial,'Helvetica Neue',sans-serif; font-size:14px; line-height:22px; color:#4b5563;">你正在登录 {{.ProductName}}。请输入以下验证码完成验证：</td>
+              </tr>
+            </table>
+
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td align="center" class="code-box" style="background-color:#f0fdfa; border:1px solid #99f6e4; border-radius:12px; padding:28px 16px;">
+                  <div class="code" style="font-family:Consolas,'SF Mono',Menlo,monospace; font-size:40px; font-weight:700; letter-spacing:8px; color:#0f766e;">{{formatCode .Code}}</div>
+                  <div class="detail" style="padding-top:12px; font-family:'Segoe UI',Arial,'Helvetica Neue',sans-serif; font-size:13px; color:#5b6b65;">验证码有效期 {{.ValidityMinutes}} 分钟</div>
+                </td>
+              </tr>
+            </table>
+
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td class="note" style="padding:28px 0 0; font-family:'Segoe UI',Arial,'Helvetica Neue',sans-serif; font-size:13px; line-height:20px; color:#4b5563;">
+                  <strong style="color:#111827;">安全提醒</strong><br>
+                  如果这不是你本人操作，请忽略此邮件，并考虑修改账号密码。<br>
+                  验证码仅用于 {{.ProductName}} 登录，请勿泄露给他人。
+                </td>
+              </tr>
+            </table>
+
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td class="divider" style="border-top:1px solid #e5e9e7; padding-top:20px; font-family:'Segoe UI',Arial,'Helvetica Neue',sans-serif; font-size:12px; line-height:18px; color:#9ca3af;">
+                  {{if .HasSupport}}如需帮助，请联系 <a href="{{.SupportHref}}" target="_blank" rel="noopener" style="color:#14b8a6; text-decoration:underline;">{{.SupportAddress}}</a>。<br>{{end}}
+                  此邮件由 {{.ProductName}} 自动发送，请勿直接回复。
+                </td>
+              </tr>
+            </table>
+
+          </td>
+        </tr>
+        <tr>
+          <td class="footer-note" style="padding:20px 8px 8px; font-family:'Segoe UI',Arial,'Helvetica Neue',sans-serif; font-size:12px; line-height:18px; color:#6b7280; text-align:center;">{{.ProductName}} 登录验证码邮件</td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
+</body>
+</html>
